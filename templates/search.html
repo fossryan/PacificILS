@@ -1,0 +1,9 @@
+<form method="GET" action="/search">
+    <input type="text" name="query" placeholder="Search books...">
+    <button type="submit">Search</button>
+</form>
+<ul>
+    {% for book in books %}
+        <li>{{ book.title }} by {{ book.author }} ({{ book.category }})</li>
+    {% endfor %}
+</ul>
