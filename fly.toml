@@ -1,9 +1,9 @@
-# fly.toml app configuration file generated for pacificils-snowy-dawn-9636 on 2025-01-09T20:26:45-05:00
+# fly.toml app configuration file generated for pacificils-z4flrw on 2025-01-10T02:19:25Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'pacificils-snowy-dawn-9636'
+app = 'pacificils-z4flrw'
 primary_region = 'bos'
 
 [build]
@@ -20,3 +20,4 @@ primary_region = 'bos'
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
+  memory_mb = 1024
