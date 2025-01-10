@@ -1,10 +1,12 @@
-# fly.toml app configuration file generated for pacificils on 2025-01-09T20:06:42-05:00
+# fly.toml app configuration file generated for pacificils-snowy-dawn-9636 on 2025-01-09T20:26:45-05:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'pacificils'
+app = 'pacificils-snowy-dawn-9636'
 primary_region = 'bos'
+
+[build]
 
 [http_service]
   internal_port = 8080
