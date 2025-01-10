@@ -1,8 +1,10 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
+import requests
 from datetime import datetime, timedelta
+from sqlalchemy import Column, Integer, String, Boolean
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///library.db'
@@ -12,13 +14,6 @@ app.secret_key = 'your_secret_key'
 db = SQLAlchemy(app)
 
 # Models
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(100), nullable=False, unique=True)
-    email = db.Column(db.String(100), nullable=False, unique=True)
-    password = db.Column(db.String(100), nullable=False)
-    role = db.Column(db.String(20), default="Patron")  # Admin, Patron
-
 class Book(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
@@ -45,69 +40,26 @@ class Borrow(db.Model):
     fine = db.Column(db.Float, default=0.0)
     status = db.Column(db.String(20), default="Borrowed")
 
-class Acquisition(db.Model):
+class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    vendor = db.Column(db.String(100), nullable=False)
-    budget = db.Column(db.Float, nullable=False)
-    books_purchased = db.Column(db.Text)
+    username = db.Column(db.String(100), nullable=False, unique=True)
+    email = db.Column(db.String(100), nullable=False, unique=True)
+    password = db.Column(db.String(100), nullable=False)
+    role = db.Column(db.String(20), default="Patron")
 
-# Role-based access control
+# Helper Functions
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user_id' not in session or session.get('role') != "Admin":
+        user_id = session.get('user_id')
+        user = User.query.get(user_id)
+        if not user or user.role != "Admin":
             flash("Admin access required.", "error")
             return redirect(url_for('index'))
         return f(*args, **kwargs)
     return decorated_function
 
-# Helper Functions
-def extend_due_date(due_date_str):
-    due_date = datetime.strptime(due_date_str, "%Y-%m-%d")
-    new_due_date = due_date + timedelta(days=7)
-    return new_due_date.strftime("%Y-%m-%d")
-
 # Routes
-@app.route('/sign_up', methods=['GET', 'POST'])
-def sign_up():
-    if request.method == 'POST':
-        username = request.form['username']
-        email = request.form['email']
-        password = request.form['password']
-        existing_user = User.query.filter((User.email == email) | (User.username == username)).first()
-        if existing_user:
-            flash('User already exists.', 'error')
-            return redirect(url_for('sign_up'))
-        hashed_password = generate_password_hash(password, method='sha256')
-        new_user = User(username=username, email=email, password=hashed_password)
-        db.session.add(new_user)
-        db.session.commit()
-        flash('Account created successfully!', 'success')
-        return redirect(url_for('login'))
-    return render_template('sign_up.html')
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
-        user = User.query.filter_by(email=email).first()
-        if user and check_password_hash(user.password, password):
-            session['user_id'] = user.id
-            session['username'] = user.username
-            session['role'] = user.role
-            flash('Logged in successfully!', 'success')
-            return redirect(url_for('index'))
-        flash('Invalid email or password.', 'error')
-        return redirect(url_for('login'))
-    return render_template('login.html')
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    flash('Logged out successfully.', 'success')
-    return redirect(url_for('login'))
-
 @app.route("/", methods=["GET"])
 def index():
     search_query = request.args.get("search", "")
@@ -119,36 +71,47 @@ def index():
         books = Book.query.all()
     return render_template("index.html", books=books)
 
-@app.route('/add_book', methods=['GET', 'POST'])
-@admin_required
-def add_book():
+@app.route('/login', methods=['GET', 'POST'])
+def login():
     if request.method == 'POST':
-        title = request.form['title']
-        author = request.form['author']
-        category = request.form['category']
-        metadata_format = request.form['metadata_format']
-        book_metadata = request.form['book_metadata']
-        digital_content_url = request.form.get('digital_content_url')
-        new_book = Book(
-            title=title, author=author, category=category,
-            metadata_format=metadata_format, book_metadata=book_metadata,
-            digital_content_url=digital_content_url
-        )
-        db.session.add(new_book)
-        db.session.commit()
-        return redirect(url_for('index'))
-    return render_template('add_book.html')
+        username = request.form['username']
+        password = request.form['password']
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password, password):
+            session['user_id'] = user.id
+            flash("Logged in successfully.", "success")
+            return redirect(url_for('index'))
+        flash("Invalid username or password.", "error")
+    return render_template('login.html')
 
-@app.route('/report')
-@admin_required
-def report():
-    total_books = Book.query.count()
-    total_patrons = Patron.query.count()
-    total_borrows = Borrow.query.count()
-    overdue_books = Borrow.query.filter(Borrow.due_date < datetime.now().strftime("%Y-%m-%d")).count()
-    return render_template('report.html', total_books=total_books, total_patrons=total_patrons, total_borrows=total_borrows, overdue_books=overdue_books)
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        email = request.form['email']
+        password = generate_password_hash(request.form['password'])
+        if User.query.filter_by(username=username).first():
+            flash("Username already exists.", "error")
+        elif User.query.filter_by(email=email).first():
+            flash("Email already exists.", "error")
+        else:
+            new_user = User(username=username, email=email, password=password)
+            db.session.add(new_user)
+            db.session.commit()
+            flash("Account created successfully. Please log in.", "success")
+            return redirect(url_for('login'))
+    return render_template('register.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    flash("Logged out successfully.", "success")
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     with app.app_context():
+        # Drop all tables (only for development/testing purposes)
+        db.drop_all()
+        # Recreate tables
         db.create_all()
     app.run(debug=True)
